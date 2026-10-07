@@ -188,3 +188,7 @@ node tests/server.test.cjs     # 另一个终端
 - **账号规则**（用户名长度、密码要求、会话天数、失败锁定）：改 `auth.mjs` 顶部的常量（`PASSWORD_MIN` 现在就是 1）。
 - **想加字段**（比如「对手」「场地」「体重」）：在 `js/core.js` 的 `normalizeRecord` 加字段、在 `index.html` 的弹窗里加输入框、在 `js/app.js` 的 `openEditor` / `submitEditor` / `recordCardHTML` 里补上读取与显示即可。
 - **想做三层以上**（项目 › 子项目 › 动作细节）：目前固定两层，`children` 是字符串数组；要更深可以把 `children` 改成同样的 `{name, children}` 结构，改 `normalizeItems` / `itemChildren` 两处即可。
+
+## 七、许可证
+
+[MIT](LICENSE)。`data/`、`data.json` 等本地数据已在 `.gitignore` 中排除，不会进入仓库。
