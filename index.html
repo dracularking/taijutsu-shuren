@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>体術修煉 · 訓練記録帖</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%2323201c'/><text y='72' x='50' text-anchor='middle' font-size='62' fill='%23e0563f' font-family='serif'>体</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="kanji" aria-hidden="true">体</span>
+    <div class="brand-text">
+      <h1>体術修煉</h1>
+      <p>訓練記録帖</p>
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs" aria-label="主视图">
+    <button class="tab" data-view="log" aria-current="page">記録</button>
+    <button class="tab" data-view="calendar">日暦</button>
+    <button class="tab" data-view="stats">統計</button>
+    <button class="tab" data-view="settings">設定</button>
+  </nav>
+
+  <div class="top-actions">
+    <span class="badge" id="storeBadge" title="数据存储方式">…</span>
+    <span class="badge user" id="userBadge" title="当前账号" hidden></span>
+    <button class="icon-btn" id="pwdBtn" title="修改密码" aria-label="修改密码" hidden>⚿</button>
+    <button class="icon-btn" id="logoutBtn" title="退出登录" aria-label="退出登录" hidden>⎋</button>
+    <button class="icon-btn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
+    <button class="btn primary" id="addBtn">＋ 新增記録</button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ 記録 ============ -->
+  <section class="view" id="view-log">
+    <div class="summary-strip" id="logSummary"></div>
+
+    <div class="toolbar">
+      <label class="search">
+        <span aria-hidden="true">🔍</span>
+        <input type="search" id="searchInput" placeholder="搜索项目、心得、效果、标签…" autocomplete="off">
+      </label>
+      <select id="sortSelect" title="排序">
+        <option value="desc">日期 ↓ 新→旧</option>
+        <option value="asc">日期 ↑ 旧→新</option>
+      </select>
+      <select id="rangeSelect" title="时间范围">
+        <option value="all">全部时间</option>
+        <option value="30">近 30 天</option>
+        <option value="90">近 90 天</option>
+        <option value="365">近一年</option>
+      </select>
+    </div>
+    <div class="chips filter-chips" id="filterChips"></div>
+
+    <div id="logList" class="log-list"></div>
+  </section>
+
+  <!-- ============ 日暦 ============ -->
+  <section class="view" id="view-calendar" hidden>
+    <div class="cal-head">
+      <button class="icon-btn" id="calPrev" aria-label="上个月">‹</button>
+      <h2 id="calTitle">—</h2>
+      <button class="icon-btn" id="calNext" aria-label="下个月">›</button>
+      <button class="btn ghost sm" id="calToday">回到本月</button>
+    </div>
+    <div class="cal-weekdays" id="calWeekdays"></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-day-panel" id="calDayPanel"></div>
+  </section>
+
+  <!-- ============ 統計 ============ -->
+  <section class="view" id="view-stats" hidden>
+    <div class="kpi-grid" id="kpiGrid"></div>
+    <div class="panel">
+      <h3>項目分布</h3>
+      <div id="itemBars" class="bars"></div>
+    </div>
+    <div class="panel">
+      <h3>近 12 週 修煉密度</h3>
+      <div id="heatmap" class="heatmap"></div>
+      <p class="hint" id="heatLegend"></p>
+    </div>
+    <div class="panel">
+      <h3>近 30 天 訓練時長（分）</h3>
+      <div id="barChart" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- ============ 設定 ============ -->
+  <section class="view" id="view-settings" hidden>
+    <div class="panel">
+      <h3>訓練項目</h3>
+      <p class="hint">项目下面可以再分子项目，例如「力量训练 › 俯卧撑」。这些会出现在新增记录的快捷按钮里。点子项目右边的 ✕ 可删除。</p>
+      <div class="item-tree" id="itemManager"></div>
+      <form class="inline-form" id="addItemForm">
+        <input type="text" id="newItemInput" placeholder="添加项目，例如：摔法、擒拿、棍术…" maxlength="20">
+        <button class="btn" type="submit">添加</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h3>数据存储</h3>
+      <p class="hint" id="storeInfo"></p>
+      <div class="row">
+        <button class="btn" id="exportJsonBtn">导出 JSON 备份</button>
+        <button class="btn" id="exportMdBtn">导出 Markdown</button>
+        <button class="btn" id="exportCsvBtn">导出 CSV</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>导入 / 恢复</h3>
+      <p class="hint">导入会与现有记录合并（同 id 覆盖），不会删除已有数据。</p>
+      <div class="row">
+        <label class="btn file-btn">选择 JSON 文件<input type="file" id="importFile" accept=".json,application/json" hidden></label>
+        <button class="btn" id="loadSampleBtn">载入示例数据</button>
+      </div>
+      <textarea id="importText" rows="4" placeholder="或者把 JSON 粘贴到这里，再点「导入文本」"></textarea>
+      <div class="row"><button class="btn" id="importTextBtn">导入文本</button></div>
+    </div>
+
+    <div class="panel danger">
+      <h3>危险操作</h3>
+      <div class="row">
+        <button class="btn danger" id="clearAllBtn">清空全部记录</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>使用说明</h3>
+      <ul class="hint list">
+        <li>账号：注册只要用户名和密码，密码用 scrypt 加盐散列后保存在本机 <code>data/users.json</code>，不存明文；每个账号有自己的 <code>data/&lt;账号&gt;.json</code>。</li>
+        <li>快捷键：<kbd>N</kbd> 新增记录，<kbd>/</kbd> 聚焦搜索，<kbd>Esc</kbd> 关闭编辑窗。</li>
+        <li>项目可以分层：先选中「力量训练」，下面就会出现它的子项目（俯卧撑、深蹲…）；选中项目后点「＋ 添加子项目」可以当场新建。</li>
+        <li>「文件存储」模式：数据保存在本目录的 <code>data/</code> 里，可用网盘/ Git 备份，也可在局域网内多设备访问。</li>
+        <li>「浏览器存储」模式：直接双击打开 index.html 时使用，数据存在浏览器本地，换浏览器不会同步，建议定期导出 JSON。</li>
+        <li>记录越多，統計页的连续天数、項目分布越准确。</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<!-- ============ 编辑弹窗 ============ -->
+<dialog id="editor" class="editor">
+  <form method="dialog" id="editorForm">
+    <header class="editor-head">
+      <h2 id="editorTitle">新增訓練記録</h2>
+      <button type="button" class="icon-btn" id="editorClose" aria-label="关闭">✕</button>
+    </header>
+
+    <div class="editor-body">
+      <div class="field-row">
+        <label class="field">
+          <span>日期</span>
+          <input type="date" id="fDate" required>
+        </label>
+        <label class="field">
+          <span>总时长（分钟）</span>
+          <input type="number" id="fMinutes" min="0" max="1440" step="5" inputmode="numeric">
+        </label>
+        <div class="field">
+          <span>体感强度</span>
+          <div class="intensity" id="fIntensity" role="radiogroup" aria-label="体感强度"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <span>訓練項目 <em class="hint-inline">可多选</em></span>
+        <div class="chips selectable" id="fItems"></div>
+        <div class="subitems" id="fSubItems"></div>
+        <div class="inline-form">
+          <input type="text" id="fItemCustom" placeholder="自定义项目，回车添加" maxlength="20">
+        </div>
+      </div>
+
+      <label class="field">
+        <span>訓練内容</span>
+        <textarea id="fContent" rows="3" placeholder="今天具体练了什么？组数、套路名称、对手、场地…"></textarea>
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>心得 · 感悟</span>
+          <textarea id="fInsight" rows="4" placeholder="身体的感觉、技术上的领悟、下次要注意的地方…"></textarea>
+        </label>
+        <label class="field">
+          <span>达成的效果</span>
+          <textarea id="fEffect" rows="4" placeholder="进步在哪里？例如：踢腿高度 +10cm、连続技不再断、体能撑完 5 回合…"></textarea>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>身体状况</span>
+          <select id="fCondition">
+            <option value="">—</option>
+            <option>状态极佳</option>
+            <option>良好</option>
+            <option>普通</option>
+            <option>疲劳</option>
+            <option>有旧伤 / 疼痛</option>
+            <option>生病 / 恢复中</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>标签 <em class="hint-inline">逗号分隔</em></span>
+          <input type="text" id="fTags" placeholder="早课, 道場, 自主練">
+        </label>
+      </div>
+    </div>
+
+    <footer class="editor-foot">
+      <button type="button" class="btn danger ghost" id="deleteBtn" hidden>删除</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost" id="cancelBtn">取消</button>
+      <button type="submit" class="btn primary" id="saveBtn">保存</button>
+    </footer>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<!-- ============ 登录 / 注册 ============ -->
+<div class="auth-screen" id="authScreen" hidden>
+  <form class="auth-card" id="authForm" autocomplete="on">
+    <div class="auth-brand">
+      <span class="kanji" aria-hidden="true">体</span>
+      <div>
+        <h1>体術修煉</h1>
+        <p>訓練記録帖</p>
+      </div>
+    </div>
+
+    <div class="auth-tabs" id="authTabs">
+      <button type="button" data-auth="login" aria-current="page">登录</button>
+      <button type="button" data-auth="register">注册</button>
+    </div>
+
+    <label class="field">
+      <span>用户名</span>
+      <input type="text" id="authName" autocomplete="username" maxlength="20" placeholder="2–20 个字符，中英文数字都行">
+    </label>
+    <label class="field">
+      <span>密码</span>
+      <input type="password" id="authPwd" autocomplete="current-password" placeholder="填什么都行，1 位也可以">
+    </label>
+    <label class="field" id="authPwd2Field" hidden>
+      <span>确认密码</span>
+      <input type="password" id="authPwd2" autocomplete="new-password" placeholder="再输一次">
+    </label>
+
+    <p class="auth-msg" id="authMsg" role="alert"></p>
+    <button class="btn primary" type="submit" id="authSubmit">登录</button>
+    <p class="hint" id="authHint">第一次使用请点「注册」。账号只保存在你自己的电脑上。</p>
+  </form>
+</div>
+
+<!-- ============ 修改密码 ============ -->
+<dialog id="pwdDialog" class="editor small">
+  <form method="dialog" id="pwdForm">
+    <header class="editor-head">
+      <h2>修改密码</h2>
+      <button type="button" class="icon-btn" id="pwdClose" aria-label="关闭">✕</button>
+    </header>
+    <div class="editor-body">
+      <label class="field"><span>原密码</span><input type="password" id="pwdOld" autocomplete="current-password"></label>
+      <label class="field"><span>新密码</span><input type="password" id="pwdNew" autocomplete="new-password"></label>
+      <label class="field"><span>确认新密码</span><input type="password" id="pwdNew2" autocomplete="new-password"></label>
+      <p class="hint" id="pwdMsg"></p>
+    </div>
+    <footer class="editor-foot">
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost" id="pwdCancel">取消</button>
+      <button type="submit" class="btn primary">保存</button>
+    </footer>
+  </form>
+</dialog>
+
+<script src="js/core.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

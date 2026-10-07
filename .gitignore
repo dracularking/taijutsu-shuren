@@ -1,0 +1,17 @@
+# ── 本地账号与训练数据（绝对不能提交）────────────────────────
+# data/sessions.json 里是【明文会话 ID】，泄露即可被冒名登录；
+# data/users.json 是密码散列与盐；data/<账号id>.json 是你的训练记录。
+data/
+data.json
+*.bak
+
+# ── 测试产生的临时数据 ──────────────────────────────────────
+tests/.tmp-data/
+tests/.tmp-legacy.json
+
+# ── 依赖与编辑器 / 系统文件 ─────────────────────────────────
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
