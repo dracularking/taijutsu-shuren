@@ -97,7 +97,7 @@
   <section class="view" id="view-settings" hidden>
     <div class="panel">
       <h3>訓練項目</h3>
-      <p class="hint">项目下面可以再分子项目，例如「力量训练 › 俯卧撑」。这些会出现在新增记录的快捷按钮里。点子项目右边的 ✕ 可删除。</p>
+      <p class="hint">项目下面可以再分子项目，例如「力量训练 › 俯卧撑」。这些会出现在新增记录的快捷按钮里，勾选后可以就地填写「个数」（如引体向上 8 个、俯卧撑 30 个）。点子项目右边的 ✕ 可删除。</p>
       <div class="item-tree" id="itemManager"></div>
       <form class="inline-form" id="addItemForm">
         <input type="text" id="newItemInput" placeholder="添加项目，例如：摔法、擒拿、棍术…" maxlength="20">
@@ -139,6 +139,7 @@
         <li>账号：注册只要用户名和密码，密码用 scrypt 加盐散列后保存在本机 <code>data/users.json</code>，不存明文；每个账号有自己的 <code>data/&lt;账号&gt;.json</code>。</li>
         <li>快捷键：<kbd>N</kbd> 新增记录，<kbd>/</kbd> 聚焦搜索，<kbd>Esc</kbd> 关闭编辑窗。</li>
         <li>项目可以分层：先选中「力量训练」，下面就会出现它的子项目（俯卧撑、深蹲…）；选中项目后点「＋ 添加子项目」可以当场新建。</li>
+        <li>个数：勾选子项目后，它旁边会出现一个小框，填引体向上 8 个、俯卧撑 30 个这类次数；没有子项目的自定义项目也能同样填写。統計页和导出都会带上个数。</li>
         <li>「文件存储」模式：数据保存在本目录的 <code>data/</code> 里，可用网盘/ Git 备份，也可在局域网内多设备访问。</li>
         <li>「浏览器存储」模式：直接双击打开 index.html 时使用，数据存在浏览器本地，换浏览器不会同步，建议定期导出 JSON。</li>
         <li>记录越多，統計页的连续天数、項目分布越准确。</li>
@@ -172,7 +173,7 @@
       </div>
 
       <div class="field">
-        <span>訓練項目 <em class="hint-inline">可多选</em></span>
+        <span>訓練項目 <em class="hint-inline">可多选 · 个数填在动作上（有子项目就填在子项目），✕ 从清单删除</em></span>
         <div class="chips selectable" id="fItems"></div>
         <div class="subitems" id="fSubItems"></div>
         <div class="inline-form">

@@ -20,6 +20,7 @@
     calSelected: '',
     editingId: null,
     formItems: [],
+    formItemCounts: {},
     formSubItems: [],
     formIntensity: 0
   };
@@ -210,13 +211,15 @@
   function renderLogSummary() {
     const list = visibleRecords();
     const stats = Core.computeStats(list);
-    $('logSummary').innerHTML = [
+    const cards = [
       ['训练次数', stats.count + ' 次'],
       ['累计时长', (Math.round(stats.totalMinutes / 6) / 10) + ' 小时'],
       ['平均每次', stats.avgMinutes + ' 分'],
       ['当前连续', stats.streak + ' 天'],
       ['本月', stats.month.count + ' 次 / ' + stats.month.minutes + ' 分']
-    ].map(function (pair) {
+    ];
+    if (stats.totalReps) cards.push(['累计个数', stats.totalReps + ' 个']);
+    $('logSummary').innerHTML = cards.map(function (pair) {
       return '<div class="stat-card"><b>' + Core.esc(pair[1]) + '</b><span>' + Core.esc(pair[0]) + '</span></div>';
     }).join('');
   }
@@ -244,6 +247,8 @@
 
     const metrics = [];
     if (r.minutes) metrics.push('<span class="metric"><b>' + r.minutes + '</b> 分钟</span>');
+    const total = Core.totalCount(r);
+    if (total) metrics.push('<span class="metric"><b>' + total + '</b> 个</span>');
     if (r.intensity) metrics.push('<span class="metric">强度 <b>' + intensityDots(r.intensity) + '</b></span>');
     if (r.condition) metrics.push('<span class="metric">' + Core.esc(r.condition) + '</span>');
 
@@ -253,7 +258,8 @@
     if (r.effect) blocks.push('<div class="rec-block"><i>效果</i><div>' + Core.esc(r.effect) + '</div></div>');
 
     const subPills = (r.subItems || []).map(function (s) {
-      return '<span class="sub-pill">' + (s.parent ? Core.esc(s.parent) + ' › ' : '') + Core.esc(s.name) + '</span>';
+      return '<span class="sub-pill">' + (s.parent ? Core.esc(s.parent) + ' › ' : '') + Core.esc(s.name)
+        + (s.count ? '<span class="n">×' + s.count + '</span>' : '') + '</span>';
     }).join('');
 
     return '<article class="record" data-id="' + Core.esc(r.id) + '">'
@@ -261,7 +267,10 @@
       + '<div class="record-main">'
       + '<div class="record-top">'
       + '<div class="rec-items">' + (r.items.length
-        ? r.items.map(function (n) { return '<span class="tag-pill">' + Core.esc(n) + '</span>'; }).join('')
+        ? r.items.map(function (n) {
+            const c = r.itemCounts && r.itemCounts[n];
+            return '<span class="tag-pill">' + Core.esc(n) + (c ? '<span class="n">×' + c + '</span>' : '') + '</span>';
+          }).join('')
         : '<span class="metric">未分类</span>') + '</div>'
       + '<span class="spacer"></span>'
       + metrics.join('')
@@ -389,6 +398,7 @@
       '<div class="kpi"><b>' + stats.month.minutes + '<small>分</small></b><span>本月时长</span>' + deltaHTML(deltaMin, '分钟') + '</div>',
       '<div class="kpi"><b>' + stats.avgMinutes + '<small>分</small></b><span>平均每次时长</span></div>',
       '<div class="kpi"><b>' + (stats.avgIntensity || '—') + '<small>/5</small></b><span>平均体感强度</span></div>',
+      (stats.totalReps ? '<div class="kpi"><b>' + stats.totalReps + '<small>个</small></b><span>累计个数</span></div>' : ''),
       '<div class="kpi"><b>' + stats.activeItems + '<small>项</small></b><span>涉及训练项目</span></div>',
       (stats.activeSubItems ? '<div class="kpi"><b>' + stats.activeSubItems + '<small>项</small></b><span>涉及子项目</span></div>' : ''),
       '<div class="kpi"><b>' + stats.last30Minutes + '<small>分</small></b><span>近 30 天时长</span></div>'
@@ -396,18 +406,18 @@
 
     const top = stats.byItem.slice(0, 9);
     const maxCount = top.length ? top[0].count : 1;
-    const barRow = function (name, count, minutes, isSub) {
+    const barRow = function (name, count, minutes, isSub, reps) {
       const pct = Math.max(4, Math.round(count / maxCount * 100));
       return '<div class="bar-row' + (isSub ? ' sub' : '') + '">'
         + '<span class="name" title="' + Core.esc(name) + '">' + Core.esc(name) + '</span>'
         + '<span class="track"><span class="fill" style="width:' + pct + '%"></span></span>'
-        + '<span class="val">' + count + ' 次 · ' + minutes + '′</span></div>';
+        + '<span class="val">' + count + ' 次 · ' + minutes + '′' + (reps ? ' · ' + reps + ' 个' : '') + '</span></div>';
     };
     $('itemBars').innerHTML = top.map(function (x) {
       const subs = stats.subItemsOf(x.name).slice(0, 6).map(function (s) {
-        return barRow(s.name, s.count, s.minutes, true);
+        return barRow(s.name, s.count, s.minutes, true, s.reps);
       }).join('');
-      return barRow(x.name, x.count, x.minutes, false) + subs;
+      return barRow(x.name, x.count, x.minutes, false, x.reps) + subs;
     }).join('');
 
     const weeks = Core.heatmap(records, stats.today, 12);
@@ -471,17 +481,70 @@
   function renderFormItems() {
     const tree = Core.normalizeItems(Store.get().settings.items);
     const names = Core.uniqueStrings(Core.itemNames(tree).concat(ui.formItems), 30);
+    syncItemCountsFromDOM();
     $('fItems').innerHTML = names.map(function (name) {
       const on = ui.formItems.indexOf(name) >= 0;
       const kids = Core.itemChildren(tree, name).length;
-      return '<button type="button" class="chip" data-pick="' + Core.esc(name) + '" aria-pressed="' + on + '" title="'
-        + (kids ? kids + ' 个子项目' : '暂无子项目') + '">'
+      const title = kids
+        ? kids + ' 个子项目 · 个数填在子项目上'
+        : (on ? '没有子项目，直接填个数' : '没有子项目，勾选后可填个数');
+      const chip = '<button type="button" class="chip" data-pick="' + Core.esc(name) + '" aria-pressed="' + on + '" title="'
+        + Core.esc(title) + '">'
         + Core.esc(name) + (kids ? '<span class="x">' + kids + '</span>' : '') + '</button>';
+      let inner = chip;
+      // 没有子项目的项目：勾选后直接给它一个「个数」输入框
+      if (on && !kids) {
+        const c = ui.formItemCounts[name] || '';
+        inner += '<input type="number" class="count-input item-count" data-item-count="' + Core.esc(name)
+          + '" min="0" max="99999" step="1" inputmode="numeric" placeholder="个数" title="个数（个 / 次）" value="' + c + '">';
+      }
+      // 勾选后可以从项目清单里删除它
+      if (on) {
+        inner += '<button type="button" class="chip-del" data-del-item="' + Core.esc(name)
+          + '" title="从项目清单删除「' + Core.esc(name) + '」" aria-label="删除项目">✕</button>';
+      }
+      return '<span class="pick-wrap">' + inner + '</span>';
     }).join('');
     renderFormSubItems(tree);
   }
 
-  /* 选中项目下面的子项目行：可以勾选已有的，也可以当场新建 */
+  /* 从项目清单里删除一个项目（不影响已有记录的内容） */
+  function deleteProject(name) {
+    if (!name) return;
+    if (!confirm('从项目清单里删除「' + name + '」？已有记录不会受影响。')) return;
+    Store.removeItem(name);
+    const i = ui.formItems.indexOf(name);
+    if (i >= 0) ui.formItems.splice(i, 1);
+    delete ui.formItemCounts[name];
+    ui.formSubItems = ui.formSubItems.filter(function (s) { return s.parent !== name; });
+    renderFormItems();
+    toast('已从项目清单删除：' + name);
+  }
+
+  /* 从项目清单里删除一个子项目 */
+  function deleteSubItem(parent, name) {
+    if (!name) return;
+    if (!confirm('从项目清单里删除子项目「' + parent + ' › ' + name + '」？已有记录不会受影响。')) return;
+    Store.removeItem(name, parent);
+    ui.formSubItems = ui.formSubItems.filter(function (s) {
+      return !(s.parent === parent && s.name === name);
+    });
+    renderFormItems();
+    toast('已从项目清单删除：' + parent + ' › ' + name);
+  }
+
+  /* 读取项目行里已填的个数，合并进 ui.formItemCounts（重绘前调用，避免丢值） */
+  function syncItemCountsFromDOM() {
+    Array.prototype.forEach.call($('fItems').querySelectorAll('.item-count'), function (input) {
+      const name = input.dataset.itemCount;
+      if (!name || ui.formItems.indexOf(name) < 0) return;   // 已取消勾选的项目不再回填
+      const count = Core.clampInt(input.value, 0, 100000, 0);
+      if (count > 0) ui.formItemCounts[name] = count;
+      else delete ui.formItemCounts[name];
+    });
+  }
+
+  /* 选中项目下面的子项目行：可以勾选已有的、填个数，也可以当场新建 */
   function renderFormSubItems(tree) {
     tree = tree || Core.normalizeItems(Store.get().settings.items);
     const host = $('fSubItems');
@@ -491,13 +554,24 @@
       const input = row.querySelector('[data-newsub]');
       if (input && input.value) typed[row.dataset.row] = input.value;
     });
+    syncSubCountsFromDOM();
 
     host.innerHTML = ui.formItems.map(function (parentName) {
       const children = Core.itemChildren(tree, parentName);
       const chips = children.map(function (name) {
-        const on = ui.formSubItems.some(function (s) { return s.parent === parentName && s.name === name; });
-        return '<button type="button" class="chip" data-sub="' + Core.esc(name) + '" data-parent="' + Core.esc(parentName)
+        const sel = ui.formSubItems.find(function (s) { return s.parent === parentName && s.name === name; });
+        const on = !!sel;
+        const chip = '<button type="button" class="chip" data-sub="' + Core.esc(name) + '" data-parent="' + Core.esc(parentName)
           + '" aria-pressed="' + on + '">' + Core.esc(name) + '</button>';
+        let inner = chip;
+        if (on) {
+          const c = sel.count ? sel.count : '';
+          inner += '<input type="number" class="count-input sub-count" data-sub-count="' + Core.esc(name)
+            + '" data-parent="' + Core.esc(parentName) + '" min="0" max="99999" step="1" inputmode="numeric" placeholder="个数" title="个数（个 / 次）" value="' + c + '">';
+          inner += '<button type="button" class="chip-del" data-del-sub="' + Core.esc(name)
+            + '" data-parent="' + Core.esc(parentName) + '" title="从项目清单删除子项目「' + Core.esc(parentName) + ' › ' + Core.esc(name) + '」" aria-label="删除子项目">✕</button>';
+        }
+        return '<span class="sub-pick">' + inner + '</span>';
       }).join('');
       return '<div class="sub-row" data-row="' + Core.esc(parentName) + '">'
         + '<span class="sub-parent">' + Core.esc(parentName) + '</span>'
@@ -513,6 +587,16 @@
     });
   }
 
+  /* 读取子项目行里已填的个数，合并进 ui.formSubItems（重绘前调用，避免丢值） */
+  function syncSubCountsFromDOM() {
+    Array.prototype.forEach.call($('fSubItems').querySelectorAll('.sub-count'), function (input) {
+      const parent = input.dataset.parent;
+      const name = input.dataset.subCount;
+      const hit = ui.formSubItems.find(function (s) { return s.parent === parent && s.name === name; });
+      if (hit) hit.count = Core.clampInt(input.value, 0, 100000, 0);
+    });
+  }
+
   function isSubSelected(parent, name) {
     return ui.formSubItems.some(function (s) { return s.parent === parent && s.name === name; });
   }
@@ -522,7 +606,7 @@
     if (!name) return;
     const existed = Core.itemChildren(Store.get().settings.items, parent).indexOf(name) >= 0;
     const added = Store.addItem(name, parent);
-    if (!isSubSelected(parent, name)) ui.formSubItems.push({ parent: parent, name: name });
+    if (!isSubSelected(parent, name)) ui.formSubItems.push({ parent: parent, name: name, count: 0 });
     if (inputEl) inputEl.value = '';
     renderFormItems();
     toast(existed || !added ? '子项目已在列表中：' + name : '已添加：' + parent + ' › ' + name);
@@ -540,8 +624,12 @@
     ui.editingId = isEdit ? record.id : null;
     ui.formItems = record && Array.isArray(record.items) ? record.items.slice() : [];
     ui.formSubItems = record && Array.isArray(record.subItems) ? record.subItems.map(function (s) {
-      return { parent: s.parent, name: s.name };
+      return { parent: s.parent, name: s.name, count: s.count || 0 };
     }) : [];
+    ui.formItemCounts = {};
+    if (record && record.itemCounts && typeof record.itemCounts === 'object') {
+      Object.keys(record.itemCounts).forEach(function (k) { ui.formItemCounts[k] = record.itemCounts[k]; });
+    }
     ui.formIntensity = record && record.intensity ? record.intensity : 0;
 
     $('editorTitle').textContent = isEdit ? '編輯訓練記録' : '新增訓練記録';
@@ -575,11 +663,20 @@
     event.preventDefault();
     const date = $('fDate').value;
     if (!Core.isValidISO(date)) { toast('请选择有效的日期'); return; }
+    syncItemCountsFromDOM();
+    syncSubCountsFromDOM();
+    const itemCounts = {};
+    ui.formItems.forEach(function (name) {
+      const c = ui.formItemCounts[name];
+      if (c > 0) itemCounts[name] = c;
+    });
     const payload = {
       id: ui.editingId || undefined,
       date: date,
       items: ui.formItems,
-      subItems: ui.formSubItems.filter(function (s) { return ui.formItems.indexOf(s.parent) >= 0; }),
+      itemCounts: itemCounts,
+      subItems: ui.formSubItems.filter(function (s) { return ui.formItems.indexOf(s.parent) >= 0; })
+        .map(function (s) { return { parent: s.parent, name: s.name, count: s.count || 0 }; }),
       minutes: Core.clampInt($('fMinutes').value, 0, 1440, 0),
       intensity: ui.formIntensity,
       content: $('fContent').value.trim(),
@@ -667,7 +764,7 @@
       if (!rec) return;
       if (btn.dataset.act === 'edit') openEditor(rec, null);
       else openEditor({
-        date: Core.todayISO(), items: rec.items, subItems: rec.subItems,
+        date: Core.todayISO(), items: rec.items, itemCounts: rec.itemCounts, subItems: rec.subItems,
         minutes: rec.minutes, intensity: rec.intensity,
         content: rec.content, insight: rec.insight, effect: rec.effect,
         condition: rec.condition, tags: rec.tags
@@ -808,6 +905,8 @@
       closeEditor();
     });
     $('fItems').addEventListener('click', function (e) {
+      const del = e.target.closest('[data-del-item]');
+      if (del) { deleteProject(del.dataset.delItem); return; }
       const chip = e.target.closest('[data-pick]');
       if (!chip) return;
       const name = chip.dataset.pick;
@@ -815,12 +914,31 @@
       if (i >= 0) {
         ui.formItems.splice(i, 1);
         ui.formSubItems = ui.formSubItems.filter(function (s) { return s.parent !== name; });
+        delete ui.formItemCounts[name];
       } else {
         ui.formItems.push(name);
       }
       renderFormItems();
     });
+    $('fItems').addEventListener('input', function (e) {
+      const input = e.target.closest('.item-count');
+      if (!input) return;
+      const name = input.dataset.itemCount;
+      const count = Core.clampInt(input.value, 0, 100000, 0);
+      if (count > 0) ui.formItemCounts[name] = count;
+      else delete ui.formItemCounts[name];
+    });
+    $('fSubItems').addEventListener('input', function (e) {
+      const input = e.target.closest('.sub-count');
+      if (!input) return;
+      const parent = input.dataset.parent;
+      const name = input.dataset.subCount;
+      const hit = ui.formSubItems.find(function (s) { return s.parent === parent && s.name === name; });
+      if (hit) hit.count = Core.clampInt(input.value, 0, 100000, 0);
+    });
     $('fSubItems').addEventListener('click', function (e) {
+      const del = e.target.closest('[data-del-sub]');
+      if (del) { deleteSubItem(del.dataset.parent, del.dataset.delSub); return; }
       const addBtn = e.target.closest('[data-addsub]');
       if (addBtn) {
         addSubItem(addBtn.dataset.addsub, addBtn.closest('.add-sub').querySelector('input'));
@@ -832,7 +950,7 @@
       const name = chip.dataset.sub;
       const i = ui.formSubItems.findIndex(function (s) { return s.parent === parent && s.name === name; });
       if (i >= 0) ui.formSubItems.splice(i, 1);
-      else ui.formSubItems.push({ parent: parent, name: name });
+      else ui.formSubItems.push({ parent: parent, name: name, count: 0 });
       renderFormSubItems();
     });
     $('fSubItems').addEventListener('keydown', function (e) {
@@ -860,6 +978,14 @@
       renderIntensity();
     });
     $('fMinutes').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('fMinutes').blur(); } });
+    // 在「个数」输入框里按回车不提交表单，只收起键盘
+    $('editorForm').addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      const input = e.target.closest && e.target.closest('.count-input');
+      if (!input) return;
+      e.preventDefault();
+      input.blur();
+    });
 
     // 快捷键
     document.addEventListener('keydown', function (e) {

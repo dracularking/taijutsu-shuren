@@ -175,15 +175,16 @@
     return hit && Array.isArray(hit.children) ? hit.children.slice() : [];
   }
 
-  /* 记录里的子项目：统一成 [{parent, name}] */
+  /* 记录里的子项目：统一成 [{parent, name, count?}]，count 是次数 / 个数 */
   function normalizeSubItems(raw) {
     const out = [];
     const seen = new Set();
     (Array.isArray(raw) ? raw : []).forEach(function (entry) {
-      let parent = '', name = '';
+      let parent = '', name = '', count = 0;
       if (entry && typeof entry === 'object') {
         parent = String(entry.parent || '').trim().slice(0, 20);
         name = String(entry.name || entry.child || '').trim().slice(0, 20);
+        count = clampInt(entry.count, 0, 100000, 0);
       } else if (typeof entry === 'string') {
         const parts = entry.split(/\s*[>›/]\s*/);
         if (parts.length >= 2) { parent = parts[0].trim().slice(0, 20); name = parts[1].trim().slice(0, 20); }
@@ -193,9 +194,37 @@
       const key = parent + '›' + name;
       if (seen.has(key)) return;
       seen.add(key);
-      out.push({ parent: parent, name: name });
+      const item = { parent: parent, name: name };
+      if (count > 0) item.count = count;      // 个数为 0 时省略，保持数据干净
+      out.push(item);
     });
     return out.slice(0, 30);
+  }
+
+  /* 项目级别的个数：统一成 { 项目名: 个数 }，只保留大于 0 且属于该项目列表的项 */
+  function normalizeItemCounts(raw, allowed) {
+    const out = {};
+    if (!raw || typeof raw !== 'object') return out;
+    const entries = Array.isArray(raw)
+      ? raw
+      : Object.keys(raw).map(function (k) { return { name: k, count: raw[k] }; });
+    entries.forEach(function (entry) {
+      const name = String(entry && (entry.name || entry.item) || '').trim().slice(0, 20);
+      if (!name) return;
+      if (allowed && allowed.indexOf(name) < 0) return;
+      const count = clampInt(entry && entry.count, 0, 100000, 0);
+      if (count > 0) out[name] = count;
+    });
+    return out;
+  }
+
+  /* 一条记录的个数合计（项目级 + 子项目级） */
+  function totalCount(r) {
+    let total = 0;
+    const counts = r && r.itemCounts;
+    if (counts) Object.keys(counts).forEach(function (k) { total += num(counts[k]); });
+    ((r && r.subItems) || []).forEach(function (s) { total += num(s.count); });
+    return total;
   }
 
   /* ------------------------- 数据规格化 ------------------------- */
@@ -204,10 +233,12 @@
     const raw = input && typeof input === 'object' ? input : {};
     const now = new Date().toISOString();
     const date = isValidISO(raw.date) ? raw.date : todayISO();
+    const items = uniqueStrings(raw.items, 20);
     return {
       id: typeof raw.id === 'string' && raw.id ? raw.id : uid(),
       date: date,
-      items: uniqueStrings(raw.items, 20),
+      items: items,
+      itemCounts: normalizeItemCounts(raw.itemCounts, items),
       subItems: normalizeSubItems(raw.subItems),
       minutes: clampInt(raw.minutes, 0, 1440, 0),
       intensity: clampInt(raw.intensity, 0, 5, 0),
@@ -372,9 +403,10 @@
     const byItemMap = new Map();
     records.forEach(function (r) {
       r.items.forEach(function (name) {
-        const cur = byItemMap.get(name) || { name: name, count: 0, minutes: 0 };
+        const cur = byItemMap.get(name) || { name: name, count: 0, minutes: 0, reps: 0 };
         cur.count++;
         cur.minutes += num(r.minutes) / Math.max(1, r.items.length);
+        cur.reps += num(r.itemCounts && r.itemCounts[name]);
         byItemMap.set(name, cur);
       });
     });
@@ -389,9 +421,10 @@
       const subs = r.subItems || [];
       subs.forEach(function (sub) {
         const key = sub.parent + '›' + sub.name;
-        const cur2 = bySubItemMap.get(key) || { parent: sub.parent, name: sub.name, count: 0, minutes: 0 };
+        const cur2 = bySubItemMap.get(key) || { parent: sub.parent, name: sub.name, count: 0, minutes: 0, reps: 0 };
         cur2.count++;
         cur2.minutes += num(r.minutes) / Math.max(1, subs.length);
+        cur2.reps += num(sub.count);
         bySubItemMap.set(key, cur2);
       });
     });
@@ -429,6 +462,7 @@
       count: records.length,
       trainingDays: streaks.totalDays,
       totalMinutes: totalMinutes,
+      totalReps: records.reduce(function (s, r) { return s + totalCount(r); }, 0),
       avgMinutes: records.length ? Math.round(totalMinutes / records.length) : 0,
       avgIntensity: avgIntensity,
       streak: streaks.current,
@@ -477,15 +511,16 @@
 
   function subItemsText(r, sep) {
     return (r.subItems || []).map(function (s) {
-      return s.parent ? s.parent + '›' + s.name : s.name;
+      const label = s.parent ? s.parent + '›' + s.name : s.name;
+      return s.count > 0 ? label + '×' + s.count : label;
     }).join(sep || '、');
   }
 
   function toCSV(records) {
-    const head = ['日期', '星期', '项目', '子项目', '时长(分)', '强度', '身体状况', '内容', '心得', '效果', '标签'];
+    const head = ['日期', '星期', '项目', '子项目', '时长(分)', '个数', '强度', '身体状况', '内容', '心得', '效果', '标签'];
     const rows = sortRecords(records, 'asc').map(function (r) {
       return [
-        r.date, weekdayCN(r.date), r.items.join(' / '), subItemsText(r, ' / '), r.minutes, r.intensity || '',
+        r.date, weekdayCN(r.date), r.items.join(' / '), subItemsText(r, ' / '), r.minutes, totalCount(r) || '', r.intensity || '',
         r.condition, r.content, r.insight, r.effect, r.tags.join(' / ')
       ].map(csvCell).join(',');
     });
@@ -497,7 +532,8 @@
     const lines = ['# 体術修煉 · 訓練記録', '', '导出时间：' + new Date().toLocaleString('zh-CN'), ''];
     const stats = computeStats(records);
     lines.push('共 **' + stats.count + '** 次训练，累计 **' + stats.totalMinutes + '** 分钟，'
-      + '训练天数 **' + stats.trainingDays + '** 天，当前连续 **' + stats.streak + '** 天。', '');
+      + '训练天数 **' + stats.trainingDays + '** 天，当前连续 **' + stats.streak + '** 天。'
+      + (stats.totalReps ? ' 累计 **' + stats.totalReps + '** 个。' : ''), '');
     groups.forEach(function (g) {
       const mins = g.records.reduce(function (s, r) { return s + num(r.minutes); }, 0);
       lines.push('## ' + g.label + '（' + g.records.length + ' 次 · ' + mins + ' 分钟）', '');
@@ -506,6 +542,7 @@
           + (r.items.length ? r.items.join('、') : '未分类')
           + ((r.subItems || []).length ? '（' + subItemsText(r) + '）' : '')
           + ' · ' + r.minutes + ' 分钟'
+          + (totalCount(r) ? ' · 共 ' + totalCount(r) + ' 个' : '')
           + (r.intensity ? ' · 强度 ' + r.intensity + '/5 ' + (INTENSITY_LABEL[r.intensity] || '') : '')
           + (r.condition ? ' · ' + r.condition : '');
         lines.push(head);
@@ -558,7 +595,7 @@
       records: [
         mk(0, ['基本功', '型・套路'], 75, 4, '马步冲拳 3 组 × 50，平安初段 5 遍，慢速拆解。',
           '重心还是容易前倾，收拳贴在腰侧时肩要松。', '平安初段后半段不用停顿了，转身角度稳了。', ['自主練'], '良好',
-          [{ parent: '基本功', name: '马步冲拳' }, { parent: '型・套路', name: '整套演练' }]),
+          [{ parent: '基本功', name: '马步冲拳', count: 150 }, { parent: '型・套路', name: '整套演练' }]),
         mk(1, ['组手・对练', '体能・间歇'], 60, 5, '轻接触组手 5 回合 × 2 分钟，间歇 30 秒跳绳。',
           '第三回合后呼吸乱了，防守手会掉。', '撑满 5 回合，比上周多一回合。', ['道場'], '疲劳',
           [{ parent: '组手・对练', name: '条件对练' }, { parent: '体能・间歇', name: '跳绳' }]),
@@ -567,7 +604,7 @@
           [{ parent: '柔韧・开胯', name: '劈叉' }, { parent: '拉伸放松', name: '腿部拉伸' }]),
         mk(5, ['力量训练', '核心力量'], 55, 4, '引体 5×6，平板支撑 3×60 秒，壶铃摆荡 4×15。',
           '核心收不紧时腰会代偿，注意呼吸。', '引体从 4 个到 6 个。', ['自主練'], '良好',
-          [{ parent: '力量训练', name: '引体向上' }, { parent: '力量训练', name: '壶铃摇摆' },
+          [{ parent: '力量训练', name: '引体向上', count: 30 }, { parent: '力量训练', name: '壶铃摇摆', count: 60 },
             { parent: '核心力量', name: '平板支撑' }]),
         mk(8, ['有氧・跑步'], 45, 3, '慢跑 6 公里，配速约 6:10。',
           '前 2 公里小腿发紧，跑开后舒服了。', '连续跑完 6 公里不停。', ['早课'], '良好',
@@ -594,6 +631,7 @@
     num: num, clampInt: clampInt, uniqueStrings: uniqueStrings, splitTags: splitTags,
     normalizeItems: normalizeItems, itemNames: itemNames, itemChildren: itemChildren,
     normalizeSubItems: normalizeSubItems, subItemsText: subItemsText, defaultChildren: defaultChildren,
+    normalizeItemCounts: normalizeItemCounts, totalCount: totalCount,
     normalizeRecord: normalizeRecord, normalizeState: normalizeState, emptyState: emptyState,
     sortRecords: sortRecords, filterRecords: filterRecords, groupByMonth: groupByMonth,
     monthMatrix: monthMatrix, minutesByDate: minutesByDate, heatLevel: heatLevel,

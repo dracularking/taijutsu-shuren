@@ -305,6 +305,58 @@ test('示例数据自带子项目且统计可用', () => {
   assert.ok(state.records.some((r) => r.subItems.length > 0));
 });
 
+/* ---------- 个数 ---------- */
+test('normalizeRecord 保留项目与子项目的个数，丢掉 0 和无关项目', () => {
+  const r = Core.normalizeRecord({
+    items: ['力量训练', '有氧・跑步'],
+    itemCounts: { '有氧・跑步': 6, '力量训练': 0, '不存在的项目': 99 },
+    subItems: [
+      { parent: '力量训练', name: '引体向上', count: 8 },
+      { parent: '力量训练', name: '俯卧撑' }
+    ]
+  });
+  assert.deepEqual(r.itemCounts, { '有氧・跑步': 6 });
+  assert.deepEqual(r.subItems, [
+    { parent: '力量训练', name: '引体向上', count: 8 },
+    { parent: '力量训练', name: '俯卧撑' }
+  ]);
+  assert.equal(Core.totalCount(r), 14);
+});
+
+test('normalizeSubItems 个数会裁剪到合理范围', () => {
+  const subs = Core.normalizeSubItems([
+    { parent: '力量训练', name: '引体向上', count: 999999 },
+    { parent: '力量训练', name: '俯卧撑', count: -5 }
+  ]);
+  assert.equal(subs[0].count, 100000);
+  assert.equal(subs[1].count, undefined);            // 0 / 负数被省略
+});
+
+test('computeStats 汇总项目与子项目的个数', () => {
+  const records = [
+    Core.normalizeRecord({ date: '2026-10-01', items: ['力量训练'], minutes: 60,
+      subItems: [{ parent: '力量训练', name: '引体向上', count: 8 }, { parent: '力量训练', name: '俯卧撑', count: 30 }] }),
+    Core.normalizeRecord({ date: '2026-10-02', items: ['力量训练'], minutes: 40, itemCounts: { '力量训练': 20 } })
+  ];
+  const s = Core.computeStats(records, '2026-10-02');
+  assert.equal(s.bySubItem.find((x) => x.name === '引体向上').reps, 8);
+  assert.equal(s.bySubItem.find((x) => x.name === '俯卧撑').reps, 30);
+  assert.equal(s.byItem.find((x) => x.name === '力量训练').reps, 20);
+  assert.equal(s.totalReps, 58);
+});
+
+test('导出含个数：CSV 有「个数」列，Markdown 带 ×个数 与合计', () => {
+  const record = Core.normalizeRecord({ date: '2026-10-01', items: ['力量训练'], minutes: 30,
+    subItems: [{ parent: '力量训练', name: '引体向上', count: 8 }] });
+  const csv = Core.toCSV([record]);
+  assert.ok(csv.indexOf('子项目,时长(分),个数,强度') > 0);
+  assert.ok(csv.indexOf('力量训练›引体向上×8') > 0);
+  assert.ok(csv.indexOf(',30,8,') > 0);
+  const md = Core.toMarkdown([record], Core.normalizeState({ records: [record] }));
+  assert.ok(md.indexOf('力量训练›引体向上×8') > 0);
+  assert.ok(md.indexOf('共 8 个') > 0);
+});
+
 test('esc 转义 HTML，避免记录内容破坏页面', () => {
   assert.equal(Core.esc('<img src=x onerror=alert(1)>'), '&lt;img src=x onerror=alert(1)&gt;');
   assert.equal(Core.esc('a"b\'c&d'), 'a&quot;b&#39;c&amp;d');

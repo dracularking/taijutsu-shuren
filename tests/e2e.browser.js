@@ -74,6 +74,9 @@
     // 勾选会重绘子项目区域，必须重新取元素再断言
     ok('子项目可勾选',
       $('#fSubItems .sub-row[data-row="基本功"] [data-sub="马步冲拳"]').getAttribute('aria-pressed') === 'true');
+    const countInput = $('#fSubItems .sub-row[data-row="基本功"] .sub-count');
+    ok('勾选子项目后出现「个数」输入框', !!countInput);
+    if (countInput) { countInput.value = '150'; fire(countInput, 'input'); }
     $('#fSubItems .sub-row[data-row="基本功"] [data-newsub]').value = '弓步冲拳';
     $('#fSubItems .sub-row[data-row="基本功"] [data-addsub]').click();
     await sleep(250);
@@ -92,6 +95,7 @@
     ok('卡片含心得与效果', !!cards[0] && cards[0].textContent.indexOf('测试心得') >= 0 && cards[0].textContent.indexOf('测试效果') >= 0);
     ok('卡片显示时长 50 分钟', !!cards[0] && cards[0].textContent.indexOf('50') >= 0);
     ok('卡片显示「项目 › 子项目」', !!cards[0] && cards[0].textContent.indexOf('基本功 › 马步冲拳') >= 0);
+    ok('卡片显示子项目个数 ×150', !!cards[0] && cards[0].textContent.indexOf('×150') >= 0);
     ok('摘要统计为 1 次', $('#logSummary .stat-card b').textContent.trim() === '1 次');
     ok('筛选按钮出现项目', $$('#filterChips .chip').length === 2);
 
@@ -132,6 +136,57 @@
     await sleep(220);
     ok('再次编辑时子项目已回填',
       $('#fSubItems .sub-row[data-row="基本功"] [data-sub="马步冲拳"]').getAttribute('aria-pressed') === 'true');
+    ok('再次编辑时个数已回填',
+      ($('#fSubItems .sub-row[data-row="基本功"] .sub-count') || {}).value === '150');
+    $('#cancelBtn').click();
+    await sleep(150);
+
+    /* ---------- 项目级个数（没有子项目的自定义项目） ---------- */
+    $('#addBtn').click();
+    await sleep(200);
+    const customInput = $('#fItemCustom');
+    customInput.value = '农夫行走';
+    customInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(220);
+    const itemCountInput = $('#fItems .item-count');
+    ok('没有子项目的项目会显示「个数」输入框', !!itemCountInput);
+    if (itemCountInput) {
+      itemCountInput.value = '40';
+      fire(itemCountInput, 'input');
+      fire($('#editorForm'), 'submit');
+      await sleep(350);
+      const withCount = $$('#logList .record').find(function (c) { return c.textContent.indexOf('农夫行走') >= 0; });
+      ok('项目级个数能保存并显示 ×40', !!withCount && withCount.textContent.indexOf('×40') >= 0);
+      window.confirm = function () { return true; };
+      withCount.querySelector('.rec-edit[data-act="edit"]').click();
+      await sleep(200);
+      $('#deleteBtn').click();
+      await sleep(400);
+      ok('清理临时记录后只剩一条', $$('#logList .record').length === 1);
+    } else {
+      $('#cancelBtn').click();
+      await sleep(150);
+    }
+
+    /* ---------- 编辑窗里删除项目 ---------- */
+    $('#addBtn').click();
+    await sleep(200);
+    const tempChip = $('#fItems [data-pick="农夫行走"]');
+    ok('新建的项目出现在项目清单里', !!tempChip);
+    if (tempChip) {
+      tempChip.click();
+      await sleep(150);
+      const delItemBtn = $('#fItems [data-del-item="农夫行走"]');
+      ok('勾选项目后出现「从清单删除」按钮', !!delItemBtn);
+      if (delItemBtn) {
+        window.confirm = function () { return true; };
+        delItemBtn.click();
+        await sleep(220);
+        ok('删除后项目从清单消失',
+          !window.Store.get().settings.items.some(function (n) { return n.name === '农夫行走'; })
+          && !$('#fItems [data-pick="农夫行走"]'));
+      }
+    }
     $('#cancelBtn').click();
     await sleep(150);
 

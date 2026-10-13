@@ -218,6 +218,27 @@ main { padding: clamp(14px, 2.4vw, 28px) clamp(12px, 3vw, 32px) 80px; max-width:
 }
 .subitems .add-sub button:hover { border-color: var(--accent); color: var(--accent); }
 
+/* 个数输入框：项目/子项目勾选后就地填写 */
+.pick-wrap, .sub-pick { display: inline-flex; align-items: center; gap: 4px; }
+.chip-del {
+  font: inherit; font-size: .72rem; line-height: 1; cursor: pointer;
+  width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--line-strong);
+  background: var(--panel); color: var(--muted); opacity: .55;
+}
+.chip-del:hover { opacity: 1; color: #fff; background: var(--accent); border-color: transparent; }
+.count-input {
+  font: inherit; font-size: .78rem; width: 56px; text-align: center;
+  padding: 3px 6px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gold) 55%, var(--line-strong));
+  background: var(--panel-2); color: var(--text);
+}
+.count-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.count-input::placeholder { color: var(--muted); opacity: .7; }
+/* 去掉数字输入框自带的上下箭头，让胶囊更干净 */
+.count-input::-webkit-outer-spin-button, .count-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.count-input { -moz-appearance: textfield; appearance: textfield; }
+
 .item-tree { display: flex; flex-direction: column; gap: 10px; }
 .item-node {
   border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -242,6 +263,7 @@ main { padding: clamp(14px, 2.4vw, 28px) clamp(12px, 3vw, 32px) 80px; max-width:
   border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent);
   color: var(--gold); background: transparent;
 }
+.tag-pill .n, .sub-pill .n { margin-left: 4px; font-weight: 700; }
 .bar-row.sub { padding-left: 14px; }
 .bar-row.sub .name { color: var(--muted); font-size: .82rem; }
 .bar-row.sub .name::before { content: "↳ "; color: var(--gold); }
